@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: income-springboot-s2i
+objects:
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenshiftApp
+    labels:
+      app: ${APP}
+    name: ${APP}
+  spec:
+    failedBuildsHistoryLimit: 2
+    successfulBuildsHistoryLimit: 2
+    nodeSelector: {}
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${APP}:${RELTAG}
+      imageLabels:
+      - name: "OCP_METADATA"
+        value: "${OCP_METADATA}"  
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      binary: {}
+      type: Binary
+    strategy:
+      sourceStrategy:
+        from:
+          kind: DockerImage
+          name: registry.access.redhat.com/redhat-openjdk-18/openjdk18-openshift:1.5
+        env:
+        - name: MAVEN_ARGS
+          value: -e -DskipTests package
+        - name: MAVEN_MIRROR_URL
+          value: http://uk.maven.org/maven2
+        - name: ARTIFACT_COPY_ARGS
+          value: '*.jar'
+      type: Source
+    triggers: []
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenshiftApp
+    creationTimestamp: null
+    generation: 1
+    labels:
+      app: ${APP}
+    name: ${APP}
+  spec:
+    lookupPolicy:
+      local: false
+parameters:
+- description: Project name
+  name: PROJ
+  required: true
+- description: Application name
+  name: APP
+  required: true
+- description: Release tag
+  name: RELTAG
+  required: true
+- description: OCP info
+  name: OCP_METADATA
+  value: ""
+  required: true

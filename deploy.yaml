@@ -1,0 +1,185 @@
+apiVersion: v1
+kind: Template
+metadata:
+  creationTimestamp: null
+  name: income-springboot-deploy
+objects:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: jenkins
+    labels:
+      app: ${APP}
+      version: "${VERSION}"
+    name: "${APP}-${VERSION}"
+  spec:
+    replicas: "${{REPLICAS}}"
+    revisionHistoryLimit: 10
+    selector:
+      app: ${APP}
+      version: "${VERSION}"
+    strategy:
+      activeDeadlineSeconds: 21600
+      type: Rolling
+      rollingUpdte:
+        maxSurge: 1
+        maxUnavailable: 1
+    template:
+      metadata:
+        labels:
+          app: ${APP}
+          version: "${VERSION}"
+        name: "${APP}-${VERSION}"  
+      spec:
+        containers:
+        - env:
+          - name: TZ
+            value: Asia/Singapore
+          image: docker-registry.default.svc:5000/${PROJ}/${APP}:${RELTAG}
+          imagePullPolicy: IfNotPresent
+          envFrom:
+          - configMapRef:
+              name: ${APP}-config
+          - secretRef:
+              name: ${APP}-secret
+          ports:
+          - containerPort: ${{APPLICATION_PORT}}
+            protocol: TCP    
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: ${{APPLICATION_PORT}}
+              scheme: HTTP
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 2
+          name: ${APP}
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: ${{APPLICATION_PORT}}
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 2
+          resources:
+            requests:
+              memory: "${REQUEST_MEM}"
+              cpu: "${REQUEST_CPU}"
+            limits:
+              memory: "${LIMIT_MEM}"
+              cpu: "${LIMIT_CPU}"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - name: vol-app-config
+            mountPath: /app/etc
+          - name: vol-data
+            mountPath: /app/data
+            subPath: ${PROJ}
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+          - name: vol-app-config
+            configMap:
+              name: ${APP}-config
+          - name: vol-data
+            persistentVolumeClaim:
+              claimName: ${APP}-data
+    test: false
+    triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${APP}
+        from:
+          kind: ImageStreamTag
+          name: ${APP}:${RELTAG}
+          namespace: ${PROJ}
+      type: ImageChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: ${APP}
+    name: ${APP}
+  spec:
+    ports:
+    - name: ${APPLICATION_PORT}-http
+      port: ${{APPLICATION_PORT}}
+      protocol: TCP
+      targetPort: ${{APPLICATION_PORT}}
+    selector:
+      app: "${APP}"
+      version: "${VERSION}"
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: "${APP}-data"
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: "${DATA_VOLUME_CAPACITY}"
+- apiVersion: autoscaling/v1
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: "hpa-${APP}-${VERSION}"
+  spec:
+    maxReplicas: 2
+    minReplicas: 1
+    scaleTargetRef:
+      apiVersion: apps.openshift.io/v1
+      kind: DeploymentConfig
+      name: "${APP}-${VERSION}"
+    targetCPUUtilizationPercentage: ${{CPU_THRESHOLD}}
+parameters:
+- description: Target project
+  name: PROJ
+  required: true
+- description: Application name
+  name: APP
+  required: true
+- description: VERSION of Application  
+  name: RELTAG
+  required: true
+- description: VERSION of Application (use '-' instead of '.')
+  name: VERSION
+  required: true
+- description: Port on which application listens
+  name: APPLICATION_PORT
+  value: "8080"
+  required: true
+- description: Minimum gauranteed CPU
+  name: REQUEST_CPU
+  value: "200m"
+- description: Minimum gauranteed Memory
+  name: REQUEST_MEM
+  value: "1Gi"
+- description: Max  Memory
+  name: LIMIT_MEM
+  value: "2Gi"
+- description: Max  CPU
+  name: LIMIT_CPU
+  value: "250m"
+- description: Storage size for Application
+  name: DATA_VOLUME_CAPACITY
+  value: "1Gi"
+- description: Number of instances of application
+  name: REPLICAS
+  value: "1"
+- description: Autoscale cpu threshold
+  name: CPU_THRESHOLD
+  value: "2"

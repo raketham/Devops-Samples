@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: income-springboot-route
+objects:
+- apiVersion: v1
+  kind: Route
+  metadata:
+    annotations:
+      haproxy.router.openshift.io/balance: "roundrobin"
+      haproxy.router.openshift.io/disable_cookies: "true"
+      haproxy.router.openshift.io/timeout: 3m
+    creationTimestamp: null
+    labels:
+      app: ${APP}
+    name: ${APP}
+  spec:
+    port:
+      targetPort: ${APPLICATION_PORT}-http
+    tls:
+      insecureEdgeTerminationPolicy: Redirect
+      termination: edge
+    to:
+      kind: Service
+      name: ${APP}
+      weight: 100
+    wildcardPolicy: None
+parameters:
+- description: Target project
+  name: PROJ
+  required: true
+- description: Application name
+  name: APP
+  required: true
+- description: VERSION of Application 
+  name: RELTAG
+  required: true
+- description: Port on which application listens
+  name: APPLICATION_PORT
+  required: true
+  value: "8080"
+- description: VERSION of Application (use '-' instead of '.')
+  name: VERSION
+  required: true
